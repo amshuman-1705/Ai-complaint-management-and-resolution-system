@@ -5,10 +5,13 @@ import path from 'path';
 
 dotenv.config();
 
-// On Vercel serverless, copy database initialized during build to /tmp/dev.db
+// Vercel runs in an ephemeral filesystem. SQLite must live under /tmp and the
+// Prisma DATABASE_URL must point there or Prisma will try to open a non-existent
+// file in the function bundle.
 if (process.env.VERCEL) {
   const tmpDbPath = '/tmp/dev.db';
   const localDbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+
   if (!fs.existsSync(tmpDbPath)) {
     try {
       if (fs.existsSync(localDbPath)) {
@@ -20,6 +23,8 @@ if (process.env.VERCEL) {
       console.warn('Unable to copy dev.db to /tmp:', e);
     }
   }
+
+  process.env.DATABASE_URL = `file:${tmpDbPath}`;
 }
 
 export const prisma = new PrismaClient({
