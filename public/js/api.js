@@ -29,6 +29,15 @@ class APIClient {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
       const data = await response.json();
 
+      if (response.status === 401) {
+        localStorage.removeItem('jwt_token');
+        localStorage.removeItem('tenant_org_id');
+        localStorage.removeItem('current_user');
+        localStorage.removeItem('current_role');
+        localStorage.removeItem('current_org_slug');
+        window.location.reload();
+      }
+
       if (!response.ok) {
         throw new Error(data.message || `HTTP Error ${response.status}`);
       }
