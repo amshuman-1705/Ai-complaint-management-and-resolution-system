@@ -31,10 +31,23 @@ export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
 });
 
+export const ensureSeedData = async () => {
+  try {
+    const orgCount = await prisma.organization.count();
+    if (orgCount === 0) {
+      const { seedDatabase } = await import('../seed');
+      await seedDatabase();
+    }
+  } catch (error) {
+    console.warn('Unable to ensure default seed data:', error);
+  }
+};
+
 export const connectDB = async () => {
   try {
     await prisma.$connect();
     console.log('✅ Connected to Prisma Relational Database Engine');
+    await ensureSeedData();
   } catch (error) {
     console.error('❌ Database Connection Error:', error);
   }
