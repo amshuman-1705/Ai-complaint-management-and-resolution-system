@@ -12,6 +12,12 @@ build/
 .env.test.local
 .env.production.local
 
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+
 # Logs
 logs
 *.log
