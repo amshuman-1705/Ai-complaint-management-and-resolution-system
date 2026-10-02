@@ -8,6 +8,11 @@ let currentRole = 'CUSTOMER';
 let activeView = 'dashboard';
 let currentComplaints = [];
 let selectedComplaint = null;
+const DEMO_ORGANIZATIONS = [
+  { slug: 'apex-bank', label: 'ABC Global Bank' },
+  { slug: 'metro-hospital', label: 'XYZ Hospital' },
+  { slug: 'horizon-university', label: 'St. Jude University' }
+];
 
 // Initialize System on DOM Load
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,15 +20,171 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initApp() {
+  const token = localStorage.getItem('jwt_token');
+
+  if (!token) {
+    renderAuthScreen();
+    return;
+  }
+
+  currentUser = JSON.parse(localStorage.getItem('current_user') || 'null');
+  currentRole = localStorage.getItem('current_role') || 'CUSTOMER';
+  currentOrgSlug = localStorage.getItem('current_org_slug') || 'apex-bank';
+
   setupRoleSwitcher();
   setupNavClickHandlers();
   setupModalHandlers();
-  
-  // Default Auto-Login as Customer for Apex Bank
-  await performQuickLogin('sarah@apexbank.com', 'CUSTOMER', 'apex-bank');
+  updateUserHeader();
+  await renderActiveView();
 }
 
 let currentOrgSlug = 'apex-bank';
+
+function renderAuthScreen() {
+  const contentArea = document.getElementById('main-content-view');
+  if (!contentArea) return;
+
+  const orgOptions = DEMO_ORGANIZATIONS.map(
+    (org) => `<option value="${org.slug}">${org.label}</option>`
+  ).join('');
+
+  contentArea.innerHTML = `
+    <div class="panel" style="max-width:860px; margin:60px auto; padding:28px;">
+      <div class="panel-header" style="margin-bottom:14px;">
+        <div>
+          <div class="panel-title">🔐 Access Complaint Workspace</div>
+          <div style="color:var(--text-muted); font-size:13px; margin-top:6px;">Use a demo tenant and sign in or create a new customer account.</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:24px;">
+        <div>
+          <h3 style="margin-bottom:16px;">Login</h3>
+          <form id="login-form">
+            <div class="form-group">
+              <label class="form-label" for="login-org">Tenant</label>
+              <select class="form-select" id="login-org">${orgOptions}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="login-email">Email</label>
+              <input class="form-input" id="login-email" type="email" value="sarah@apexbank.com" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="login-password">Password</label>
+              <input class="form-input" id="login-password" type="password" value="password123" required>
+            </div>
+            <div id="login-message" style="margin-bottom:12px; color:var(--accent-amber); font-size:12px; min-height:18px;"></div>
+            <button class="btn btn-primary" type="submit">Login</button>
+          </form>
+        </div>
+
+        <div>
+          <h3 style="margin-bottom:16px;">Create Account</h3>
+          <form id="signup-form">
+            <div class="form-group">
+              <label class="form-label" for="signup-org">Tenant</label>
+              <select class="form-select" id="signup-org">${orgOptions}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="signup-name">Full Name</label>
+              <input class="form-input" id="signup-name" type="text" placeholder="Jane Customer" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="signup-email">Email</label>
+              <input class="form-input" id="signup-email" type="email" placeholder="you@company.com" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="signup-password">Password</label>
+              <input class="form-input" id="signup-password" type="password" placeholder="Create password" required>
+            </div>
+            <div id="signup-message" style="margin-bottom:12px; color:var(--accent-amber); font-size:12px; min-height:18px;"></div>
+            <button class="btn btn-secondary" type="submit">Sign Up</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('login-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const orgSlug = document.getElementById('login-org').value;
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    try {
+      const res = await APIClient.login(orgSlug, email, password);
+      if (!res.success) throw new Error(res.message || 'Login failed.');
+
+      localStorage.setItem('jwt_token', res.data.token);
+      localStorage.setItem('tenant_org_id', res.data.user.orgId);
+      localStorage.setItem('current_user', JSON.stringify(res.data.user));
+      localStorage.setItem('current_role', res.data.user.role || 'CUSTOMER');
+      localStorage.setItem('current_org_slug', orgSlug);
+
+      currentUser = res.data.user;
+      currentRole = res.data.user.role || 'CUSTOMER';
+      currentOrgSlug = orgSlug;
+      updateUserHeader();
+      await renderActiveView();
+    } catch (err) {
+      const msg = document.getElementById('login-message');
+      if (msg) msg.textContent = err.message || 'Unable to login.';
+    }
+  });
+
+  document.getElementById('signup-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const orgSlug = document.getElementById('signup-org').value;
+    const fullName = document.getElementById('signup-name').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+
+    try {
+      const res = await APIClient.register(orgSlug, fullName, email, password, 'CUSTOMER');
+      if (!res.success) throw new Error(res.message || 'Sign up failed.');
+
+      const loginRes = await APIClient.login(orgSlug, email, password);
+      localStorage.setItem('jwt_token', loginRes.data.token);
+      localStorage.setItem('tenant_org_id', loginRes.data.user.orgId);
+      localStorage.setItem('current_user', JSON.stringify(loginRes.data.user));
+      localStorage.setItem('current_role', loginRes.data.user.role || 'CUSTOMER');
+      localStorage.setItem('current_org_slug', orgSlug);
+
+      currentUser = loginRes.data.user;
+      currentRole = loginRes.data.user.role || 'CUSTOMER';
+      currentOrgSlug = orgSlug;
+      updateUserHeader();
+      await renderActiveView();
+    } catch (err) {
+      const msg = document.getElementById('signup-message');
+      if (msg) msg.textContent = err.message || 'Unable to create account.';
+    }
+  });
+}
+
+function persistSession() {
+  if (currentUser) {
+    localStorage.setItem('current_user', JSON.stringify(currentUser));
+  }
+  if (currentRole) {
+    localStorage.setItem('current_role', currentRole);
+  }
+  if (currentOrgSlug) {
+    localStorage.setItem('current_org_slug', currentOrgSlug);
+  }
+}
+
+function logoutCurrentUser() {
+  localStorage.removeItem('jwt_token');
+  localStorage.removeItem('tenant_org_id');
+  localStorage.removeItem('current_user');
+  localStorage.removeItem('current_role');
+  localStorage.removeItem('current_org_slug');
+  currentUser = null;
+  currentRole = 'CUSTOMER';
+  currentOrgSlug = 'apex-bank';
+  renderAuthScreen();
+}
 
 async function performQuickLogin(email, role, orgSlug = 'apex-bank') {
   try {

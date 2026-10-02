@@ -23,6 +23,7 @@ const router = Router();
 // ==========================================
 // 1. AUTHENTICATION ENDPOINTS
 // ==========================================
+router.get('/auth/organizations', AuthController.listOrganizations);
 router.post('/auth/register', AuthController.register);
 router.post('/auth/login', AuthController.login);
 

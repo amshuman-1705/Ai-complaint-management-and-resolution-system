@@ -6,7 +6,8 @@ import { AuditRepository } from '../repositories/auditRepository';
 
 export class AuthService {
   static async registerUser(data: {
-    orgId: string;
+    orgId?: string;
+    orgSlug?: string;
     deptId?: string;
     roleName: UserRole;
     email: string;
@@ -14,13 +15,21 @@ export class AuthService {
     fullName: string;
     employeeCode?: string;
   }) {
-    const org = await OrgRepository.findById(data.orgId);
-    if (!org) throw { statusCode: 404, message: 'Target Organization not found.' };
+    const org = data.orgId
+      ? await OrgRepository.findById(data.orgId)
+      : data.orgSlug
+        ? await OrgRepository.findBySlug(data.orgSlug)
+        : null;
 
-    const existing = await UserRepository.findByEmail(data.orgId, data.email);
+    if (!org) {
+      throw { statusCode: 404, message: data.orgSlug ? `Organization '${data.orgSlug}' not found.` : 'Target Organization not found.' };
+    }
+
+    const orgId = org.id;
+    const existing = await UserRepository.findByEmail(orgId, data.email);
     if (existing) throw { statusCode: 400, message: 'User with this email already exists in organization.' };
 
-    let role = await UserRepository.findRoleByName(data.orgId, data.roleName);
+    let role = await UserRepository.findRoleByName(orgId, data.roleName);
     if (!role) {
       role = await UserRepository.createRole({
         orgId: data.orgId,
@@ -31,7 +40,7 @@ export class AuthService {
 
     const hashed = await hashPassword(data.password);
     const user = await UserRepository.createUser({
-      orgId: data.orgId,
+      orgId,
       deptId: data.deptId,
       roleId: role.id,
       email: data.email,
@@ -42,13 +51,13 @@ export class AuthService {
     if (data.employeeCode && (data.roleName === 'AGENT' || data.roleName === 'DEPT_MANAGER')) {
       await UserRepository.createEmployeeProfile({
         userId: user.id,
-        orgId: data.orgId,
+        orgId,
         employeeCode: data.employeeCode,
       });
     }
 
     await AuditRepository.log({
-      orgId: data.orgId,
+      orgId,
       userId: user.id,
       actionType: 'USER_REGISTERED',
       targetEntity: 'users',

@@ -41,8 +41,16 @@ class APIClient {
   }
 
   // 1. Authentication
+  static getOrganizations() {
+    return this.request('/auth/organizations', 'GET');
+  }
+
   static login(orgSlug, email, password) {
     return this.request('/auth/login', 'POST', { orgSlug, email, password });
+  }
+
+  static register(orgSlug, fullName, email, password, roleName = 'CUSTOMER') {
+    return this.request('/auth/register', 'POST', { orgSlug, fullName, email, password, roleName });
   }
 
   // 2. Tenants & Organizations
