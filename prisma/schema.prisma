@@ -1,0 +1,543 @@
+// Prisma Database Schema for AI-Based Multi-Organization Complaint System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Organization (Tenant Container)
+model Organization {
+  id         String   @id @default(uuid())
+  name       String
+  domainType String // BANK, HOSPITAL, TELECOM, UNIVERSITY
+  slug       String   @unique
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  departments         Department[]
+  roles               Role[]
+  users               User[]
+  employees           Employee[]
+  categories          ComplaintCategory[]
+  complaints          Complaint[]
+  labels              ComplaintLabel[]
+  statusHistories     ComplaintStatusHistory[]
+  assignments         ComplaintAssignment[]
+  messages            ComplaintMessage[]
+  attachments         Attachment[]
+  aiPredictions       AIPrediction[]
+  aiExplanations      AIExplanation[]
+  duplicateComplaints DuplicateComplaint[]
+  resolutionRecs      ResolutionRecommendation[]
+  aiResponses         AIResponse[]
+  slaRules            SLARule[]
+  slaRecords          SLARecord[]
+  escalations         Escalation[]
+  kbDocuments         KBDocument[]
+  kbChunks            KBChunk[]
+  embeddings          Embedding[]
+  agentFeedbacks      AgentFeedback[]
+  customerFeedbacks   CustomerFeedback[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+}
+
+// 2. Department
+model Department {
+  id           String   @id @default(uuid())
+  orgId        String
+  name         String
+  code         String
+  baseSlaHours Int      @default(24)
+  createdAt    DateTime @default(now())
+
+  organization Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  users        User[]
+  categories   ComplaintCategory[]
+  complaints   Complaint[]
+  assignments  ComplaintAssignment[]
+  slaRules     SLARule[]
+  kbDocuments  KBDocument[]
+
+  @@unique([orgId, code])
+}
+
+// 3. Role
+model Role {
+  id           String   @id @default(uuid())
+  orgId        String?
+  name         String
+  description  String?
+  isSystemRole Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  organization Organization?    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  users        User[]
+  permissions  RolePermission[]
+
+  @@unique([orgId, name])
+}
+
+// 4. Permission
+model Permission {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  description String?
+  category    String
+
+  roles RolePermission[]
+}
+
+// 5. RolePermission
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// 6. User (Identity & RBAC)
+model User {
+  id           String   @id @default(uuid())
+  orgId        String
+  deptId       String?
+  roleId       String
+  email        String
+  passwordHash String
+  fullName     String
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [deptId], references: [id], onDelete: SetNull)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  employeeProfile     Employee?
+  submittedComplaints Complaint[]              @relation("CustomerComplaints")
+  assignedComplaints  Complaint[]              @relation("AssignedAgentComplaints")
+  changedStatuses     ComplaintStatusHistory[]
+  assignedByMe        ComplaintAssignment[]    @relation("AssignedByAssignment")
+  assignedToMe        ComplaintAssignment[]    @relation("AssignedToAssignment")
+  messages            ComplaintMessage[]
+  uploadedAttachments Attachment[]
+  escalationsFrom     Escalation[]             @relation("EscalatedFrom")
+  escalationsTo       Escalation[]             @relation("EscalatedTo")
+  agentFeedbacks      AgentFeedback[]
+  customerFeedbacks   CustomerFeedback[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+
+  @@unique([orgId, email])
+}
+
+// 7. Employee (Workload & Capacity)
+model Employee {
+  userId               String  @id
+  orgId                String
+  employeeCode         String
+  activeWorkload       Int     @default(0)
+  maxCapacity          Int     @default(15)
+  specializationSkills String? // JSON string of skills
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, employeeCode])
+}
+
+// 8. ComplaintCategory
+model ComplaintCategory {
+  id            String  @id @default(uuid())
+  orgId         String
+  parentId      String?
+  name          String
+  description   String?
+  defaultDeptId String?
+
+  organization      Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parent            ComplaintCategory?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: Cascade)
+  subcategories     ComplaintCategory[] @relation("CategoryParent")
+  defaultDepartment Department?         @relation(fields: [defaultDeptId], references: [id], onDelete: SetNull)
+
+  complaints    Complaint[]
+  aiPredictions AIPrediction[]
+
+  @@unique([orgId, name])
+}
+
+// 9. Complaint
+model Complaint {
+  id                String    @id @default(uuid())
+  ticketNumber      String
+  orgId             String
+  categoryId        String?
+  deptId            String?
+  customerId        String
+  assignedAgentId   String?
+  title             String
+  description       String
+  inputChannel      String    @default("TEXT") // TEXT, OCR_IMAGE, VOICE
+  status            String    @default("SUBMITTED") // SUBMITTED, AI_PROCESSING, TRIAGED, ASSIGNED, IN_PROGRESS, PENDING_APPROVAL, RESOLVED, CLOSED, REOPENED, ESCALATED
+  priority          String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  severityScore     Int       @default(50)
+  sentimentScore    Float     @default(0.0)
+  estimatedSlaHours Int?
+  slaDueAt          DateTime?
+  isSlaBreached     Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization  Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  category      ComplaintCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  department    Department?        @relation(fields: [deptId], references: [id], onDelete: SetNull)
+  customer      User               @relation("CustomerComplaints", fields: [customerId], references: [id], onDelete: Restrict)
+  assignedAgent User?              @relation("AssignedAgentComplaints", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+
+  labels              ComplaintLabelMapping[]
+  statusHistories     ComplaintStatusHistory[]
+  assignments         ComplaintAssignment[]
+  messages            ComplaintMessage[]
+  attachments         Attachment[]
+  aiPrediction        AIPrediction?
+  aiExplanation       AIExplanation?
+  primaryDuplicates   DuplicateComplaint[]       @relation("PrimaryComplaint")
+  secondaryDuplicates DuplicateComplaint[]       @relation("DuplicateComplaint")
+  resolutionRecs      ResolutionRecommendation[]
+  aiResponses         AIResponse[]
+  slaRecord           SLARecord?
+  escalations         Escalation[]
+  agentFeedbacks      AgentFeedback[]
+  customerFeedback    CustomerFeedback?
+
+  @@unique([orgId, ticketNumber])
+}
+
+// 10. ComplaintLabel
+model ComplaintLabel {
+  id       String @id @default(uuid())
+  orgId    String
+  name     String
+  colorHex String @default("#38bdf8")
+
+  organization Organization            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaints   ComplaintLabelMapping[]
+
+  @@unique([orgId, name])
+}
+
+// 11. ComplaintLabelMapping
+model ComplaintLabelMapping {
+  complaintId String
+  labelId     String
+
+  complaint Complaint      @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  label     ComplaintLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([complaintId, labelId])
+}
+
+// 12. ComplaintStatusHistory
+model ComplaintStatusHistory {
+  id              String   @id @default(uuid())
+  orgId           String
+  complaintId     String
+  changedByUserId String?
+  oldStatus       String?
+  newStatus       String
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  organization  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint     Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  changedByUser User?        @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
+}
+
+// 13. ComplaintAssignment
+model ComplaintAssignment {
+  id               String   @id @default(uuid())
+  orgId            String
+  complaintId      String
+  assignedByUserId String?
+  assignedAgentId  String?
+  deptId           String
+  assignmentNotes  String?
+  createdAt        DateTime @default(now())
+
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint      Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  assignedByUser User?        @relation("AssignedByAssignment", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+  assignedAgent  User?        @relation("AssignedToAssignment", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  department     Department   @relation(fields: [deptId], references: [id], onDelete: Cascade)
+}
+
+// 14. ComplaintMessage
+model ComplaintMessage {
+  id             String   @id @default(uuid())
+  orgId          String
+  complaintId    String
+  senderUserId   String?
+  senderType     String // CUSTOMER, AGENT, AI_BOT, SYSTEM
+  messageText    String
+  isInternalNote Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  senderUser   User?        @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+}
+
+// 15. Attachment
+model Attachment {
+  id               String   @id @default(uuid())
+  orgId            String
+  complaintId      String?
+  uploadedByUserId String?
+  fileName         String
+  filePath         String
+  fileType         String
+  fileSizeBytes    BigInt
+  ocrExtractedText String?
+  createdAt        DateTime @default(now())
+
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint      Complaint?   @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  uploadedByUser User?        @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+}
+
+// 16. AIPrediction
+model AIPrediction {
+  id                   String   @id @default(uuid())
+  orgId                String
+  complaintId          String   @unique
+  predictedCategoryId  String?
+  predictedSubCategory String?
+  modelVersion         String   @default("DeBERTa-v3-Mistral-RAG-v1.2")
+  confidenceScore      Float    @default(0.0)
+  isAiAbstained        Boolean  @default(false)
+  intents              String?  // JSON String Array
+  detectedEntities     String?  // JSON String Array
+  duplicateComplaints  String?  // JSON String Array
+  relatedComplaints    String?  // JSON String Array
+  recommendedResolution String? // Text draft
+  detectedLanguage     String   @default("en")
+  processedAt          DateTime @default(now())
+
+  organization      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint         Complaint          @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  predictedCategory ComplaintCategory? @relation(fields: [predictedCategoryId], references: [id], onDelete: SetNull)
+}
+
+// 17. AIExplanation
+model AIExplanation {
+  id                 String   @id @default(uuid())
+  orgId              String
+  complaintId        String   @unique
+  topFeatureKeywords String // JSON String
+  decisionRationale  String?
+  createdAt          DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+// 18. DuplicateComplaint
+model DuplicateComplaint {
+  id                   String   @id @default(uuid())
+  orgId                String
+  primaryComplaintId   String
+  duplicateComplaintId String
+  similarityScore      Float
+  detectedAt           DateTime @default(now())
+
+  organization       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  primaryComplaint   Complaint    @relation("PrimaryComplaint", fields: [primaryComplaintId], references: [id], onDelete: Cascade)
+  duplicateComplaint Complaint    @relation("DuplicateComplaint", fields: [duplicateComplaintId], references: [id], onDelete: Cascade)
+
+  @@unique([primaryComplaintId, duplicateComplaintId])
+}
+
+// 19. ResolutionRecommendation
+model ResolutionRecommendation {
+  id                      String   @id @default(uuid())
+  orgId                   String
+  complaintId             String
+  recommendedDraftText    String
+  groundedConfidenceScore Float    @default(0.0)
+  referencedSourceChunks  String? // JSON String
+  createdAt               DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+// 20. AIResponse
+model AIResponse {
+  id               String   @id @default(uuid())
+  orgId            String
+  complaintId      String
+  responseText     String
+  isSentToCustomer Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+// 21. SLARule
+model SLARule {
+  id                    String  @id @default(uuid())
+  orgId                 String
+  deptId                String?
+  priority              String // LOW, MEDIUM, HIGH, CRITICAL
+  targetResolutionHours Int
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [deptId], references: [id], onDelete: Cascade)
+  slaRecords   SLARecord[]
+
+  @@unique([orgId, deptId, priority])
+}
+
+// 22. SLARecord
+model SLARecord {
+  id                  String    @id @default(uuid())
+  orgId               String
+  complaintId         String    @unique
+  slaRuleId           String?
+  dueAt               DateTime
+  resolvedAt          DateTime?
+  isBreached          Boolean   @default(false)
+  breachDurationHours Float     @default(0.0)
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  slaRule      SLARule?     @relation(fields: [slaRuleId], references: [id], onDelete: SetNull)
+}
+
+// 23. Escalation
+model Escalation {
+  id                   String   @id @default(uuid())
+  orgId                String
+  complaintId          String
+  escalatedFromAgentId String?
+  escalatedToManagerId String?
+  escalationReason     String
+  createdAt            DateTime @default(now())
+
+  organization       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint          Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  escalatedFromAgent User?        @relation("EscalatedFrom", fields: [escalatedFromAgentId], references: [id], onDelete: SetNull)
+  escalatedToManager User?        @relation("EscalatedTo", fields: [escalatedToManagerId], references: [id], onDelete: SetNull)
+}
+
+// 24. KBDocument
+model KBDocument {
+  id              String   @id @default(uuid())
+  orgId           String
+  deptId          String?
+  title           String
+  sourceUrlOrFile String?
+  status          String   @default("INDEXED") // PROCESSING, INDEXED, FAILED
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [deptId], references: [id], onDelete: SetNull)
+  chunks       KBChunk[]
+}
+
+// 25. KBChunk
+model KBChunk {
+  id           String   @id @default(uuid())
+  orgId        String
+  documentId   String
+  chunkIndex   Int
+  chunkContent String
+  createdAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  document     KBDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  embedding    Embedding?
+}
+
+// 26. Embedding
+model Embedding {
+  id               String   @id @default(uuid())
+  orgId            String
+  chunkId          String   @unique
+  vectorSerialized String // Serialized vector array
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  chunk        KBChunk      @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+}
+
+// 27. AgentFeedback
+model AgentFeedback {
+  id                   String   @id @default(uuid())
+  orgId                String
+  complaintId          String
+  agentId              String
+  isCategoryOverridden Boolean  @default(false)
+  originalAiCategory   String?
+  correctedCategory    String?
+  editedRagResponse    String?
+  createdAt            DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  agent        User         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+// 28. CustomerFeedback
+model CustomerFeedback {
+  id              String   @id @default(uuid())
+  orgId           String
+  complaintId     String   @unique
+  customerId      String
+  ratingStars     Int
+  isIssueResolved Boolean  @default(true)
+  comments        String?
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  complaint    Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  customer     User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+// 29. Notification
+model Notification {
+  id        String   @id @default(uuid())
+  orgId     String
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  eventType String
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 30. AuditLog
+model AuditLog {
+  id           String   @id @default(uuid())
+  orgId        String?
+  userId       String?
+  ipAddress    String?
+  actionType   String
+  targetEntity String
+  details      String? // JSON String
+  createdAt    DateTime @default(now())
+
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

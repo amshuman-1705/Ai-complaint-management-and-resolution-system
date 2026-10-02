@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Multi-Organization Complaint Resolution Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app-container">
+    <!-- Sidebar Navigation -->
+    <sidebar>
+      <div class="brand-header">
+        <div class="brand-logo">AI</div>
+        <div>
+          <div class="brand-title">Enterprise Complaint Platform</div>
+          <div class="brand-subtitle">Multi-Tenant AI & RAG Engine</div>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <div class="nav-section-title">Navigation Workspace</div>
+        <a class="nav-item active" data-view="dashboard">
+          <span class="icon">📊</span>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav-item" data-view="kb">
+          <span class="icon">📚</span>
+          <span>Knowledge Base (RAG)</span>
+        </a>
+        <a class="nav-item" data-view="sla">
+          <span class="icon">⏱️</span>
+          <span>SLA & Predictive Risk</span>
+        </a>
+        <a class="nav-item" data-view="analytics">
+          <span class="icon">📈</span>
+          <span>Analytics & Emerging Issues</span>
+        </a>
+        <a class="nav-item" data-view="audit">
+          <span class="icon">🛡️</span>
+          <span>Audit Stream Log</span>
+        </a>
+      </nav>
+
+      <!-- Tenant & Role Switcher Controls -->
+      <div class="user-profile-card">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Active Tenant & Identity</div>
+        <div id="user-full-name" style="font-weight:700; font-size:13px; margin-top:2px;">Sarah Connor</div>
+        <div style="margin-top:6px;">
+          <span id="user-role-badge" class="badge badge-ai">CUSTOMER</span>
+        </div>
+
+        <select id="org-selector" class="role-switcher-select" style="margin-top:10px; border-color:var(--accent-cyan);">
+          <option value="apex-bank">🏦 Tenant: ABC Global Bank</option>
+          <option value="metro-hospital">🏥 Tenant: XYZ Hospital</option>
+          <option value="horizon-university">🎓 Tenant: St. Jude University</option>
+        </select>
+
+        <select id="role-selector" class="role-switcher-select" style="margin-top:6px;">
+          <option value="CUSTOMER">Switch Role: Customer / End User</option>
+          <option value="AGENT">Switch Role: Support Agent</option>
+          <option value="MANAGER">Switch Role: Department Manager</option>
+          <option value="ORG_ADMIN">Switch Role: Organization Admin</option>
+          <option value="SUPER_ADMIN">Switch Role: Platform Super Admin</option>
+        </select>
+      </div>
+    </sidebar>
+
+    <!-- Main View Workspace Container -->
+    <main id="main-content-view">
+      <div style="padding:40px; text-align:center; color:#94a3b8;">Initializing Enterprise AI Engine...</div>
+    </main>
+  </div>
+
+  <!-- Reusable Modal Container -->
+  <div id="modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <div id="modal-card-content"></div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
