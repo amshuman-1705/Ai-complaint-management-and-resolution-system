@@ -4,7 +4,7 @@
   "description": "Production-Grade AI-Based Multi-Organization Complaint Classification and Resolution System Backend",
   "main": "dist/server.js",
   "scripts": {
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && prisma db push --accept-data-loss && tsc",
     "start": "node dist/server.js",
     "dev": "node dist/server.js",
     "db:push": "npx prisma db push",

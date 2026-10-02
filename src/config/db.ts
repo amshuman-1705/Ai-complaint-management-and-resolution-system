@@ -1,17 +1,23 @@
 import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
-// On Vercel serverless, SQLite requires writing to /tmp/dev.db
-if (process.env.VERCEL && process.env.DATABASE_URL?.includes('/tmp')) {
-  const dbPath = '/tmp/dev.db';
-  if (!fs.existsSync(dbPath)) {
+// On Vercel serverless, copy database initialized during build to /tmp/dev.db
+if (process.env.VERCEL) {
+  const tmpDbPath = '/tmp/dev.db';
+  const localDbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+  if (!fs.existsSync(tmpDbPath)) {
     try {
-      fs.writeFileSync(dbPath, '');
+      if (fs.existsSync(localDbPath)) {
+        fs.copyFileSync(localDbPath, tmpDbPath);
+      } else {
+        fs.writeFileSync(tmpDbPath, '');
+      }
     } catch (e) {
-      console.warn('Unable to initialize /tmp/dev.db:', e);
+      console.warn('Unable to copy dev.db to /tmp:', e);
     }
   }
 }
